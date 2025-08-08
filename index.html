@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dots and Boxes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* CSS Variables - these will be dynamically set by JavaScript */
+        :root {
+            --dot-diameter: 18px; /* Visual size of the dot */
+            --line-thickness: 8px; /* Visual thickness of the line */
+            --box-track-size: 50px; /* Grid track size for boxes/lines */
+            --dot-track-size: 20px; /* Grid track size for dots */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light blue-gray background */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-x: hidden; /* Prevent horizontal scroll on small screens */
+        }
+
+        .game-container {
+            background-color: #ffffff;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 2.5rem;
+            text-align: center;
+            max-width: 90%; /* Max width, but allows shrinking */
+            width: auto; /* Allow width to be determined by content or max-width */
+            margin-bottom: 20px;
+        }
+
+        .game-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 1.5rem;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .game-info {
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+            color: #555;
+        }
+
+        .player-score {
+            font-weight: bold;
+        }
+
+        .player-1-text { color: #e74c3c; } /* Red */
+        .player-2-text { color: #3498db; } /* Blue */
+
+        .board-grid {
+            display: grid;
+            gap: 0; /* No gap between grid items */
+            margin: 0 auto;
+            border: 2px solid #ccc; /* Subtle border for the whole grid area */
+            border-radius: 0.5rem;
+            overflow: hidden;
+            background-color: #e0e0e0; /* Light background for the grid area */
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+            /* Max width will be set by JS based on calculated dimensions */
+        }
+
+        .dot-cell {
+            width: var(--dot-track-size); /* Grid cell size for dots */
+            height: var(--dot-track-size);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .dot {
+            width: var(--dot-diameter);
+            height: var(--dot-diameter);
+            background-color: #34495e; /* Dark gray */
+            border-radius: 50%;
+            z-index: 3; /* Dots on top of everything */
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.5); /* 3D effect */
+        }
+
+        .line-segment {
+            background-color: transparent; /* Invisible by default */
+            cursor: pointer;
+            transition: background-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+            z-index: 2; /* Lines below dots, above boxes */
+            position: relative;
+            display: flex; /* To center the actual colored line within its cell */
+            justify-content: center;
+            align-items: center;
+            width: 100%; /* Fill its grid cell */
+            height: 100%; /* Fill its grid cell */
+        }
+
+        /* Use ::before pseudo-element for the actual line visual */
+        .line-segment.horizontal::before {
+            content: '';
+            display: block;
+            height: var(--line-thickness);
+            width: 100%; /* Fill the line-segment container */
+            border-radius: var(--line-thickness);
+        }
+
+        .line-segment.vertical::before {
+            content: '';
+            display: block;
+            width: var(--line-thickness);
+            height: 100%; /* Fill the line-segment container */
+            border-radius: var(--line-thickness);
+        }
+
+        .line-segment:hover:not(.drawn)::before {
+            background-color: rgba(142, 68, 173, 0.4); /* Purple hover */
+        }
+
+        .line-segment.drawn::before {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+
+        .line-segment.drawn.player-1-color::before {
+            background: linear-gradient(to bottom, #e74c3c, #c0392b); /* Player 1 red gradient */
+        }
+
+        .line-segment.drawn.player-2-color::before {
+            background: linear-gradient(to bottom, #3498db, #2980b9); /* Player 2 blue gradient */
+        }
+
+        .box {
+            width: 100%;
+            height: 100%;
+            background-color: #f8f8f8; /* Default box background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2rem; /* Hidden text, but kept for potential debugging */
+            font-weight: bold;
+            color: transparent; /* Hide player number */
+            z-index: 1; /* Boxes at the bottom */
+            border-radius: 5px; /* Slight rounding for boxes */
+            transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+        }
+
+        .box.captured {
+            box-shadow: inset 0 0 8px rgba(0,0,0,0.2); /* Inner shadow for captured boxes */
+        }
+
+        .box.captured.player-1-color {
+            background-color: #e74c3c; /* Solid red fill */
+        }
+
+        .box.captured.player-2-color {
+            background-color: #3498db; /* Solid blue fill */
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 600px) {
+            .game-container {
+                padding: 1.5rem;
+            }
+            .game-title {
+                font-size: 2rem;
+            }
+            .game-info {
+                font-size: 1rem;
+            }
+        }
+
+        .multiplayer-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .multiplayer-controls .input-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .multiplayer-controls input[type="text"] {
+            flex-grow: 1;
+            padding: 10px 15px;
+            border: 2px solid #ccc;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .multiplayer-controls input[type="text"]:focus {
+            border-color: #8e44ad;
+        }
+
+        .multiplayer-controls button, .grid-size-control button {
+            background-color: #34495e; /* Darker button for controls */
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: bold;
+            transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .multiplayer-controls button:hover, .grid-size-control button:hover {
+            background-color: #2c3e50;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .multiplayer-controls button:active, .grid-size-control button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .info-text {
+            font-size: 0.95rem;
+            color: #555;
+            margin-top: 10px;
+            text-align: left;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #8e44ad;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .grid-size-control {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .grid-size-input-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .grid-size-input-group input[type="number"] {
+            padding: 10px 15px;
+            border: 2px solid #ccc;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            outline: none;
+            width: 80px; /* Fixed width for number input */
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+
+        .grid-size-input-group input[type="number"]:focus {
+            border-color: #8e44ad;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1 class="game-title">Dots and Boxes</h1>
+        <div class="game-info">
+            <p>Current Player: <span id="currentPlayerDisplay" class="player-1-text">Player 1</span></p>
+            <p>Player 1 Score: <span id="player1Score" class="player-score player-1-text">0</span></p>
+            <p>Player 2 Score: <span id="player2Score" class="player-score player-2-text">0</span></p>
+            <p>Message: <span id="gameMessage" class="text-gray-600">Draw a line!</span></p>
+        </div>
+        <div id="boardGrid" class="board-grid">
+            <!-- Grid elements will be generated here by JavaScript -->
+        </div>
+        <button id="resetGameBtn" class="mt-6 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition transform hover:scale-105">
+            Reset Game
+        </button>
+
+        <div class="multiplayer-controls">
+            <h2 class="text-xl font-bold text-gray-800 mb-2">Online Play</h2>
+            <div class="input-group">
+                <input type="text" id="gameIdInput" placeholder="Enter Game ID">
+                <button id="joinGameBtn">Join Game</button>
+            </div>
+            <button id="createGameBtn">Create New Game</button>
+            <div class="info-text">
+                <p>Your User ID: <span id="userIdDisplay">Loading...</span></p>
+                <p>Current Game ID: <span id="gameIdDisplay">None</span></p>
+                <p>You are Player: <span id="assignedPlayerDisplay">Waiting...</span></p>
+                <div id="loadingIndicator" class="loading-spinner hidden"></div>
+            </div>
+        </div>
+
+        <div class="grid-size-control">
+            <h2 class="text-xl font-bold text-gray-800 mb-2">Grid Size</h2>
+            <div class="grid-size-input-group">
+                <input type="number" id="gridSizeInput" value="6" min="3" max="10">
+                <button id="setGridSizeBtn">Set Grid Size</button>
+            </div>
+            <p class="text-sm text-gray-500 mt-2">Min: 3, Max: 10 dots per side</p>
+        </div>
+    </div>
+
+    <script type="module">
+        // Firebase imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const boardGrid = document.getElementById('boardGrid');
+        const currentPlayerDisplay = document.getElementById('currentPlayerDisplay');
+        const player1ScoreDisplay = document.getElementById('player1Score');
+        const player2ScoreDisplay = document.getElementById('player2Score');
+        const gameMessage = document.getElementById('gameMessage');
+        const resetGameBtn = document.getElementById('resetGameBtn');
+        const gridSizeInput = document.getElementById('gridSizeInput');
+        const setGridSizeBtn = document.getElementById('setGridSizeBtn');
+
+        // Multiplayer UI elements
+        const gameIdInput = document.getElementById('gameIdInput');
+        const createGameBtn = document.getElementById('createGameBtn');
+        const joinGameBtn = document.getElementById('joinGameBtn');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const gameIdDisplay = document.getElementById('gameIdDisplay');
+        const assignedPlayerDisplay = document.getElementById('assignedPlayerDisplay');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+
+        let currentGridSize = 6; // N x N dots, resulting in (N-1) x (N-1) boxes
+        let currentPlayer = 1; // 1 or 2
+        let player1Score = 0;
+        let player2Score = 0;
+        let totalBoxes = (currentGridSize - 1) * (currentGridSize - 1);
+        let capturedBoxesCount = 0;
+        let gameOver = false;
+
+        // Game state arrays
+        let horizontalLines = Array(currentGridSize).fill(0).map(() => Array(currentGridSize - 1).fill(0));
+        let verticalLines = Array(currentGridSize - 1).fill(0).map(() => Array(currentGridSize).fill(0));
+        let boxes = Array(currentGridSize - 1).fill(0).map(() => Array(currentGridSize - 1).fill(0));
+
+        // Firebase variables
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        let firebaseConfig = {};
+        let db;
+        let auth;
+        let currentUserId = null;
+        let currentGameId = null;
+        let myPlayerNumber = 0; // 0: not assigned, 1: Player 1, 2: Player 2
+        let player1Id = null;
+        let player2Id = null;
+        let unsubscribeGameListener = null; // To store the unsubscribe function for onSnapshot
+
+        // --- Firebase Initialization ---
+        try {
+            firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' && __firebase_config !== '' ? __firebase_config : '{}');
+        } catch (e) {
+            console.error("Error parsing __firebase_config:", e);
+            gameMessage.textContent = "Error loading Firebase configuration. Check console.";
+        }
+
+        // Ensure projectId is present. If not, use a placeholder and warn.
+        if (!firebaseConfig.projectId || firebaseConfig.projectId === 'your-default-project-id') {
+            console.warn("Firebase projectId not found or is default. Using a placeholder. Please ensure your Canvas environment provides a valid Firebase config.");
+            // Provide default values for all required Firebase config properties
+            firebaseConfig.projectId = firebaseConfig.projectId || 'your-default-project-id';
+            firebaseConfig.apiKey = firebaseConfig.apiKey || 'your-default-api-key';
+            firebaseConfig.authDomain = firebaseConfig.authDomain || 'your-default-auth-domain';
+            firebaseConfig.databaseURL = firebaseConfig.databaseURL || 'your-default-database-url';
+            firebaseConfig.storageBucket = firebaseConfig.storageBucket || 'your-default-storage-bucket';
+            firebaseConfig.messagingSenderId = firebaseConfig.messagingSenderId || 'your-default-messaging-sender-id';
+            firebaseConfig.appId = firebaseConfig.appId || 'your-default-app-id';
+        }
+
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUserId = user.uid;
+            } else {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token !== '') {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    currentUserId = auth.currentUser.uid;
+                } catch (error) {
+                    console.error("Firebase authentication error:", error);
+                    gameMessage.textContent = "Error authenticating. Please refresh.";
+                }
+            }
+            userIdDisplay.textContent = currentUserId;
+        });
+
+        // --- Game State Synchronization with Firestore ---
+
+        async function updateGameInFirestore() {
+            if (!currentGameId) {
+                console.warn("No game ID set. Cannot update Firestore.");
+                return;
+            }
+            loadingIndicator.classList.remove('hidden');
+            try {
+                const gameDocRef = doc(db, `artifacts/${appId}/public/data/dots_and_boxes_games`, currentGameId);
+                await setDoc(gameDocRef, {
+                    board: JSON.stringify({
+                        horizontalLines,
+                        verticalLines,
+                        boxes
+                    }),
+                    currentPlayer: currentPlayer,
+                    player1Score: player1Score,
+                    player2Score: player2Score,
+                    capturedBoxesCount: capturedBoxesCount,
+                    gameOver: gameOver,
+                    player1Id: player1Id,
+                    player2Id: player2Id,
+                    gridSize: currentGridSize, // Save grid size with the game
+                    lastUpdated: Date.now(),
+                    gameMessage: gameMessage.textContent
+                }, { merge: true });
+            } catch (error) {
+                console.error("Error updating game in Firestore:", error);
+                gameMessage.textContent = "Error saving move. Check console.";
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        function listenForGameUpdates(gameId) {
+            if (unsubscribeGameListener) {
+                unsubscribeGameListener(); // Unsubscribe from previous listener if any
+            }
+
+            const gameDocRef = doc(db, `artifacts/${appId}/public/data/dots_and_boxes_games`, gameId);
+            unsubscribeGameListener = onSnapshot(gameDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const gameData = docSnap.data();
+                    
+                    // Update local game state from Firestore
+                    const boardState = JSON.parse(gameData.board);
+                    horizontalLines = boardState.horizontalLines;
+                    verticalLines = boardState.verticalLines;
+                    boxes = boardState.boxes;
+                    
+                    currentPlayer = gameData.currentPlayer;
+                    player1Score = gameData.player1Score;
+                    player2Score = gameData.player2Score;
+                    capturedBoxesCount = gameData.capturedBoxesCount;
+                    gameOver = gameData.gameOver;
+                    player1Id = gameData.player1Id || null;
+                    player2Id = gameData.player2Id || null;
+                    currentGridSize = gameData.gridSize || 6; // Load grid size from game data
+
+                    // Assign player number if not already assigned or if player ID changed
+                    if (myPlayerNumber === 0 || (player1Id === currentUserId && myPlayerNumber !== 1) || (player2Id === currentUserId && myPlayerNumber !== 2)) {
+                        if (player1Id === currentUserId) {
+                            myPlayerNumber = 1;
+                            assignedPlayerDisplay.textContent = "Player 1 (Red)";
+                        } else if (player2Id === currentUserId) {
+                            myPlayerNumber = 2;
+                            assignedPlayerDisplay.textContent = "Player 2 (Blue)";
+                        } else if (!player1Id && !player2Id) { // Game just created by this user
+                            myPlayerNumber = 1;
+                            assignedPlayerDisplay.textContent = "Player 1 (Red)";
+                        } else { // Spectator
+                            myPlayerNumber = 0;
+                            assignedPlayerDisplay.textContent = "Spectator";
+                            gameMessage.textContent = "This game is full. You are a spectator.";
+                        }
+                    }
+
+                    renderBoard(); // Re-render the board with the updated state
+                    updateGameInfo(); // Update scores and current player display
+                    gameMessage.textContent = gameData.gameMessage || "Game updated!";
+
+                    // If game is over, disable line clicks
+                    if (gameOver) {
+                        document.querySelectorAll('.line-segment:not(.drawn)').forEach(line => {
+                            line.removeEventListener('click', handleLineClick);
+                            line.style.cursor = 'default';
+                            line.style.backgroundColor = 'transparent';
+                        });
+                    }
+
+                } else {
+                    gameMessage.textContent = "Game not found. Please create or join another.";
+                    currentGameId = null;
+                    gameIdDisplay.textContent = "None";
+                    myPlayerNumber = 0;
+                    assignedPlayerDisplay.textContent = "Waiting...";
+                    initializeGame(true); // Reset local state if game disappears
+                }
+            }, (error) => {
+                console.error("Error listening to game updates:", error);
+                gameMessage.textContent = "Error syncing game. Check console.";
+            });
+            currentGameId = gameId;
+            gameIdDisplay.textContent = gameId;
+        }
+
+        // --- Game Control Functions ---
+
+        async function createGame() {
+            if (!currentUserId) {
+                gameMessage.textContent = "Please wait, authenticating... (Try clicking again in a moment)";
+                return;
+            }
+            loadingIndicator.classList.remove('hidden');
+            gameMessage.textContent = "Creating new game...";
+            try {
+                const newGameId = Math.random().toString(36).substring(2, 9).toUpperCase();
+                const gameDocRef = doc(db, `artifacts/${appId}/public/data/dots_and_boxes_games`, newGameId);
+                
+                // Initialize a fresh game state for the new game
+                const initialHorizontalLines = Array(currentGridSize).fill(0).map(() => Array(currentGridSize - 1).fill(0));
+                const initialVerticalLines = Array(currentGridSize - 1).fill(0).map(() => Array(currentGridSize).fill(0));
+                const initialBoxes = Array(currentGridSize - 1).fill(0).map(() => Array(currentGridSize - 1).fill(0));
+
+                await setDoc(gameDocRef, {
+                    board: JSON.stringify({
+                        horizontalLines: initialHorizontalLines,
+                        verticalLines: initialVerticalLines,
+                        boxes: initialBoxes
+                    }),
+                    currentPlayer: 1,
+                    player1Score: 0,
+                    player2Score: 0,
+                    capturedBoxesCount: 0,
+                    gameOver: false,
+                    player1Id: currentUserId,
+                    player2Id: null, // Player 2 slot is empty
+                    gridSize: currentGridSize,
+                    lastUpdated: Date.now(),
+                    gameMessage: `Game created! ID: ${newGameId}. Share this with a friend.`
+                });
+                
+                gameMessage.textContent = `Game created! ID: ${newGameId}. Share this with a friend.`;
+                listenForGameUpdates(newGameId);
+                myPlayerNumber = 1;
+                assignedPlayerDisplay.textContent = "Player 1 (Red)";
+            } catch (error) {
+                console.error("Error creating game:", error);
+                gameMessage.textContent = `Failed to create game: ${error.message}. Check console for details.`;
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        async function joinGame() {
+            if (!currentUserId) {
+                gameMessage.textContent = "Please wait, authenticating...";
+                return;
+            }
+            const gameId = gameIdInput.value.trim().toUpperCase();
+            if (!gameId) {
+                gameMessage.textContent = "Please enter a Game ID to join.";
+                return;
+            }
+            loadingIndicator.classList.remove('hidden');
+            gameMessage.textContent = `Attempting to join game ${gameId}...`;
+            try {
+                const gameDocRef = doc(db, `artifacts/${appId}/public/data/dots_and_boxes_games`, gameId);
+                const docSnap = await getDoc(gameDocRef);
+
+                if (docSnap.exists()) {
+                    const gameData = docSnap.data();
+
+                    if (gameData.player1Id === currentUserId || gameData.player2Id === currentUserId) {
+                        gameMessage.textContent = `You are already in game ${gameId}.`;
+                        listenForGameUpdates(gameId);
+                    } else if (!gameData.player2Id) {
+                        await setDoc(gameDocRef, {
+                            player2Id: currentUserId,
+                            gameMessage: `Player 2 (${currentUserId.substring(0, 6)}...) joined the game!`
+                        }, { merge: true });
+                        gameMessage.textContent = `Joined game ${gameId} as Player 2.`;
+                        listenForGameUpdates(gameId);
+                        myPlayerNumber = 2;
+                        assignedPlayerDisplay.textContent = "Player 2 (Blue)";
+                    } else if (!gameData.player1Id) { // Edge case: Player 1 left, Player 2 joins as Player 1
+                        await setDoc(gameDocRef, {
+                            player1Id: currentUserId,
+                            gameMessage: `Player 1 (${currentUserId.substring(0, 6)}...) joined the game!`
+                        }, { merge: true });
+                        gameMessage.textContent = `Joined game ${gameId} as Player 1.`;
+                        listenForGameUpdates(gameId);
+                        myPlayerNumber = 1;
+                        assignedPlayerDisplay.textContent = "Player 1 (Red)";
+                    }
+                    else {
+                        gameMessage.textContent = "This game is full. You can spectate.";
+                        listenForGameUpdates(gameId); // Still listen to updates for spectating
+                        myPlayerNumber = 0;
+                        assignedPlayerDisplay.textContent = "Spectator";
+                    }
+                } else {
+                    gameMessage.textContent = "Game ID not found. Please check the ID or create a new game.";
+                }
+            } catch (error) {
+                console.error("Error joining game:", error);
+                gameMessage.textContent = `Failed to join game: ${error.message}. Check console for details.`;
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        // --- Game Initialization and Rendering (Modified for Multiplayer) ---
+
+        function initializeGame(isReset = false) {
+            // Only reset local game state if it's a fresh start or game not found
+            if (isReset || !currentGameId) {
+                totalBoxes = (currentGridSize - 1) * (currentGridSize - 1);
+                currentPlayer = 1;
+                player1Score = 0;
+                player2Score = 0;
+                capturedBoxesCount = 0;
+                gameOver = false;
+                horizontalLines = Array(currentGridSize).fill(0).map(() => Array(currentGridSize - 1).fill(0));
+                verticalLines = Array(currentGridSize - 1).fill(0).map(() => Array(currentGridSize).fill(0));
+                boxes = Array(currentGridSize - 1).fill(0).map(() => Array(currentGridSize - 1).fill(0));
+                gameMessage.textContent = "Draw a line!";
+            }
+            renderBoard();
+            updateGameInfo();
+        }
+
+        // Function to calculate and set dynamic grid dimensions
+        function calculateAndSetGridDimensions() {
+            const gameContainer = boardGrid.closest('.game-container');
+            const containerStyle = getComputedStyle(gameContainer);
+            const containerPaddingX = parseFloat(containerStyle.paddingLeft) + parseFloat(containerStyle.paddingRight);
+            const containerBorderX = parseFloat(containerStyle.borderLeftWidth) + parseFloat(containerStyle.borderRightWidth);
+            const availableWidth = gameContainer.clientWidth - containerPaddingX - containerBorderX;
+
+            const fixedDotDiameter = 18;
+            const fixedLineThickness = 8;
+
+            var dotTrackSize = fixedDotDiameter * 1.2;
+            const numDotTracks = currentGridSize;
+            const numBoxTracks = currentGridSize - 1;
+
+            const totalFixedDotTrackSpace = numDotTracks * dotTrackSize;
+            let remainingWidthForBoxTracks = availableWidth - totalFixedDotTrackSpace;
+
+            var boxTrackSize = 0;
+            if (numBoxTracks > 0) {
+                boxTrackSize = remainingWidthForBoxTracks / numBoxTracks;
+            } else {
+                boxTrackSize = 50;
+            }
+
+            boxTrackSize = Math.max(boxTrackSize, 40);
+
+            const finalCalculatedTotalWidth = (numDotTracks * dotTrackSize) + (numBoxTracks * boxTrackSize);
+            if (finalCalculatedTotalWidth > availableWidth) {
+                const scaleFactor = availableWidth / finalCalculatedTotalWidth;
+                dotTrackSize *= scaleFactor;
+                boxTrackSize *= scaleFactor;
+                
+                dotTrackSize = Math.max(fixedDotDiameter + 2, dotTrackSize);
+                boxTrackSize = Math.max(40, boxTrackSize);
+            }
+
+            document.documentElement.style.setProperty('--dot-diameter', `${fixedDotDiameter}px`);
+            document.documentElement.style.setProperty('--line-thickness', `${fixedLineThickness}px`);
+            document.documentElement.style.setProperty('--box-track-size', `${boxTrackSize}px`);
+            document.documentElement.style.setProperty('--dot-track-size', `${dotTrackSize}px`);
+
+            let gridColumns = '';
+            let gridRows = '';
+            for (let i = 0; i < currentGridSize - 1; i++) {
+                gridColumns += `var(--dot-track-size) var(--box-track-size) `;
+                gridRows += `var(--dot-track-size) var(--box-track-size) `;
+            }
+            gridColumns += `var(--dot-track-size)`;
+            gridRows += `var(--dot-track-size)`;
+
+            boardGrid.style.gridTemplateColumns = gridColumns;
+            boardGrid.style.gridTemplateRows = gridRows;
+
+            const finalGridRenderedWidth = (numDotTracks * dotTrackSize) + (numBoxTracks * boxTrackSize);
+            boardGrid.style.width = `${finalGridRenderedWidth}px`;
+            boardGrid.style.height = `${finalGridRenderedWidth}px`;
+        }
+
+
+        function renderBoard() {
+            boardGrid.innerHTML = '';
+            calculateAndSetGridDimensions(); 
+
+            for (let row = 0; row < (currentGridSize * 2) - 1; row++) {
+                for (let col = 0; col < (currentGridSize * 2) - 1; col++) {
+                    if (row % 2 === 0 && col % 2 === 0) {
+                        const dotCell = document.createElement('div');
+                        dotCell.classList.add('dot-cell');
+                        const dot = document.createElement('div');
+                        dot.classList.add('dot');
+                        dotCell.appendChild(dot);
+                        boardGrid.appendChild(dotCell);
+                    } else if (row % 2 === 0 && col % 2 !== 0) {
+                        const hLine = document.createElement('div');
+                        hLine.classList.add('line-segment', 'horizontal');
+                        hLine.dataset.row = row / 2;
+                        hLine.dataset.col = (col - 1) / 2;
+                        if (horizontalLines[hLine.dataset.row][hLine.dataset.col] !== 0) {
+                            hLine.classList.add('drawn', `player-${horizontalLines[hLine.dataset.row][hLine.dataset.col]}-color`);
+                        } else {
+                            hLine.addEventListener('click', handleLineClick);
+                        }
+                        boardGrid.appendChild(hLine);
+                    } else if (row % 2 !== 0 && col % 2 === 0) {
+                        const vLine = document.createElement('div');
+                        vLine.classList.add('line-segment', 'vertical');
+                        vLine.dataset.row = (row - 1) / 2;
+                        vLine.dataset.col = col / 2;
+                        if (verticalLines[vLine.dataset.row][vLine.dataset.col] !== 0) {
+                            vLine.classList.add('drawn', `player-${verticalLines[vLine.dataset.row][vLine.dataset.col]}-color`);
+                        } else {
+                            vLine.addEventListener('click', handleLineClick);
+                        }
+                        boardGrid.appendChild(vLine);
+                    } else {
+                        const box = document.createElement('div');
+                        box.classList.add('box');
+                        box.dataset.row = (row - 1) / 2;
+                        box.dataset.col = (col - 1) / 2;
+                        if (boxes[box.dataset.row][box.dataset.col] !== 0) {
+                            box.classList.add('captured', `player-${boxes[box.dataset.row][box.dataset.col]}-color`);
+                        }
+                        boardGrid.appendChild(box);
+                    }
+                }
+            }
+        }
+
+        // --- Game Logic (Modified for Multiplayer) ---
+
+        function handleLineClick(event) {
+            if (gameOver) {
+                gameMessage.textContent = "Game over! Reset to play again.";
+                return;
+            }
+
+            if (!currentGameId) {
+                gameMessage.textContent = "Please create or join a game to play online.";
+                return;
+            }
+
+            if (myPlayerNumber === 0 || myPlayerNumber !== currentPlayer) {
+                gameMessage.textContent = "It's not your turn, or you are a spectator!";
+                return;
+            }
+
+            const lineElement = event.target;
+            const row = parseInt(lineElement.dataset.row);
+            const col = parseInt(lineElement.dataset.col);
+            const type = lineElement.classList.contains('horizontal') ? 'horizontal' : 'vertical';
+
+            let boxCaptured = false;
+
+            if (type === 'horizontal') {
+                if (horizontalLines[row][col] !== 0) return;
+                horizontalLines[row][col] = currentPlayer;
+                boxCaptured = checkBoxes(row, col, type);
+            } else {
+                if (verticalLines[row][col] !== 0) return;
+                verticalLines[row][col] = currentPlayer;
+                boxCaptured = checkBoxes(row, col, type);
+            }
+
+            if (!boxCaptured) {
+                currentPlayer = currentPlayer === 1 ? 2 : 1;
+                gameMessage.textContent = `Player ${currentPlayer}'s turn.`;
+            } else {
+                gameMessage.textContent = `Box captured! Player ${currentPlayer} gets another turn.`;
+            }
+            
+            updateGameInFirestore(); // Push changes to Firestore
+            renderBoard(); // Re-render locally to reflect immediate changes
+            updateGameInfo();
+            checkGameOver();
+        }
+
+        function checkBoxes(lineRow, lineCol, lineType) {
+            let capturedAnyBox = false;
+
+            if (lineType === 'horizontal') {
+                if (lineRow > 0) {
+                    if (isBoxComplete(lineRow - 1, lineCol)) {
+                        captureBox(lineRow - 1, lineCol);
+                        capturedAnyBox = true;
+                    }
+                }
+                if (lineRow < currentGridSize - 1) {
+                    if (isBoxComplete(lineRow, lineCol)) {
+                        captureBox(lineRow, lineCol);
+                        capturedAnyBox = true;
+                    }
+                }
+            } else {
+                if (lineCol > 0) {
+                    if (isBoxComplete(lineRow, lineCol - 1)) {
+                        captureBox(lineRow, lineCol - 1);
+                        capturedAnyBox = true;
+                    }
+                }
+                if (lineCol < currentGridSize - 1) {
+                    if (isBoxComplete(lineRow, lineCol)) {
+                        captureBox(lineRow, lineCol);
+                        capturedAnyBox = true;
+                    }
+                }
+            }
+            return capturedAnyBox;
+        }
+
+        function isBoxComplete(boxRow, boxCol) {
+            if (boxes[boxRow][boxCol] !== 0) return false;
+
+            const top = horizontalLines[boxRow][boxCol] !== 0;
+            const bottom = horizontalLines[boxRow + 1][boxCol] !== 0;
+            const left = verticalLines[boxRow][boxCol] !== 0;
+            const right = verticalLines[boxRow][boxCol + 1] !== 0;
+
+            return top && bottom && left && right;
+        }
+
+        function captureBox(boxRow, boxCol) {
+            boxes[boxRow][boxCol] = currentPlayer;
+            capturedBoxesCount++;
+
+            if (currentPlayer === 1) {
+                player1Score++;
+            } else {
+                player2Score++;
+            }
+
+            const boxElement = boardGrid.querySelector(`.box[data-row="${boxRow}"][data-col="${boxCol}"]`);
+            if (boxElement) {
+                boxElement.classList.add('captured', `player-${currentPlayer}-color`);
+            }
+        }
+
+        function checkGameOver() {
+            if (capturedBoxesCount === totalBoxes) {
+                gameOver = true;
+                let winnerMessage = "";
+                if (player1Score > player2Score) {
+                    winnerMessage = "Player 1 wins!";
+                } else if (player2Score > player1Score) {
+                    winnerMessage = "Player 2 wins!";
+                } else {
+                    winnerMessage = "It's a tie!";
+                }
+                gameMessage.textContent = `Game Over! ${winnerMessage}`;
+                document.querySelectorAll('.line-segment:not(.drawn)').forEach(line => {
+                    line.removeEventListener('click', handleLineClick);
+                    line.style.cursor = 'default';
+                    line.style.backgroundColor = 'transparent';
+                });
+                updateGameInFirestore(); // Ensure final state is saved
+            }
+        }
+
+        // --- UI Updates ---
+
+        function updateGameInfo() {
+            currentPlayerDisplay.textContent = `Player ${currentPlayer}`;
+            currentPlayerDisplay.classList.remove('player-1-text', 'player-2-text');
+            currentPlayerDisplay.classList.add(`player-${currentPlayer}-text`);
+
+            player1ScoreDisplay.textContent = player1Score;
+            player2ScoreDisplay.textContent = player2Score;
+        }
+
+        // --- Event Listeners ---
+        resetGameBtn.addEventListener('click', () => {
+            if (currentGameId) {
+                // If in a game, reset local state and push to Firestore
+                initializeGame(true);
+                updateGameInFirestore();
+                gameMessage.textContent = "Game reset! Player 1's turn.";
+            } else {
+                // If not in a game, just reset local state
+                initializeGame(true);
+            }
+        });
+        createGameBtn.addEventListener('click', createGame);
+        joinGameBtn.addEventListener('click', joinGame);
+
+        // Handle setting new grid size
+        setGridSizeBtn.addEventListener('click', () => {
+            const newSize = parseInt(gridSizeInput.value);
+            if (!isNaN(newSize) && newSize >= 3 && newSize <= 10) {
+                currentGridSize = newSize;
+                initializeGame(true); // Reinitialize the game with the new size
+                gameMessage.textContent = `Grid size set to ${newSize}x${newSize} dots. New game started!`;
+                if (currentGameId) { // If currently in a game, update Firestore with new size
+                    updateGameInFirestore();
+                }
+            } else {
+                gameMessage.textContent = "Please enter a number between 3 and 10 for grid size.";
+            }
+        });
+
+        // Recalculate and re-render on window resize
+        window.addEventListener('resize', () => {
+            if (!gameOver) {
+                calculateAndSetGridDimensions();
+            }
+        });
+
+        // Initial game setup on load
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeGame(true); // Initial setup, forcing a local reset
+        });
+    </script>
+</body>
+</html>
