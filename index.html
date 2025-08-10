@@ -297,8 +297,8 @@
         <h1 class="game-title">Dots and Boxes</h1>
         <div class="game-info">
             <p>Current Player: <span id="currentPlayerDisplay" class="player-1-text">Player 1</span></p>
-            <p>Player 1 Score: <span id="player1Score" class="player-score player-1-text">0</span></p>
-            <p>Player 2 Score: <span id="player2Score" class="player-score player-2-text">0</span></p>
+            <p><span id="player1NameDisplay" class="player-score player-1-text">Player 1</span> Score: <span id="player1Score" class="player-score player-1-text">0</span></p>
+            <p><span id="player2NameDisplay" class="player-score player-2-text">Player 2</span> Score: <span id="player2Score" class="player-score player-2-text">0</span></p>
             <p>Message: <span id="gameMessage" class="text-gray-600">Draw a line!</span></p>
         </div>
         <div id="boardGrid" class="board-grid">
@@ -310,6 +310,9 @@
 
         <div class="multiplayer-controls">
             <h2 class="text-xl font-bold text-gray-800 mb-2">Online Play</h2>
+            <div class="input-group">
+                <input type="text" id="playerNameInput" placeholder="Your Name" value="Player">
+            </div>
             <div class="input-group">
                 <input type="text" id="gameIdInput" placeholder="Enter Game ID">
                 <button id="joinGameBtn">Join Game</button>
@@ -338,7 +341,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js"; // NEW: Import for Analytics
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
 
         const boardGrid = document.getElementById('boardGrid');
         const currentPlayerDisplay = document.getElementById('currentPlayerDisplay');
@@ -357,6 +360,11 @@
         const gameIdDisplay = document.getElementById('gameIdDisplay');
         const assignedPlayerDisplay = document.getElementById('assignedPlayerDisplay');
         const loadingIndicator = document.getElementById('loadingIndicator');
+
+        // New UI elements for player names
+        const playerNameInput = document.getElementById('playerNameInput');
+        const player1NameDisplay = document.getElementById('player1NameDisplay');
+        const player2NameDisplay = document.getElementById('player2NameDisplay');
 
         let currentGridSize = 6; // N x N dots, resulting in (N-1) x (N-1) boxes
         let currentPlayer = 1; // 1 or 2
@@ -379,11 +387,12 @@
         let myPlayerNumber = 0; // 0: not assigned, 1: Player 1, 2: Player 2
         let player1Id = null;
         let player2Id = null;
+        let player1Name = 'Player 1'; // Default names
+        let player2Name = 'Player 2'; // Default names
         let unsubscribeGameListener = null; // To store the unsubscribe function for onSnapshot
 
 
-        // --- Firebase Initialization - MODIFIED SECTION ---
-        // Your web app's Firebase configuration - Using the config you provided!
+        // Your web app's Firebase configuration
         const firebaseConfig = {
           apiKey: "AIzaSyBzqAu34Uo-Hhmh9PgnyGLo8fffAj4l0aw",
           authDomain: "dots-and-boxes-e9a86.firebaseapp.com",
@@ -398,8 +407,7 @@
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
-        const analytics = getAnalytics(app); // NEW: Initialize Analytics
-        // --- END MODIFIED SECTION ---
+        const analytics = getAnalytics(app);
 
 
         onAuthStateChanged(auth, async (user) => {
@@ -407,8 +415,6 @@
                 currentUserId = user.uid;
             } else {
                 try {
-                    // Note: __initial_auth_token is likely from a specific codelab environment.
-                    // For a standard web app, you might just call signInAnonymously directly.
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token !== '') {
                         await signInWithCustomToken(auth, __initial_auth_token);
                     } else {
@@ -432,10 +438,8 @@
             }
             loadingIndicator.classList.remove('hidden');
             try {
-                // Using firebaseConfig.appId for the 'artifacts' path as per your original structure
-                // This assumes `artifacts/YOUR_APP_ID/public/data/dots_and_boxes_games` is your collection path
                 const gameDocRef = doc(db, `artifacts/${firebaseConfig.appId}/public/data/dots_and_boxes_games`, currentGameId);
-                await setDoc(gameDocRef, {
+                const updateData = {
                     board: JSON.stringify({
                         horizontalLines,
                         verticalLines,
@@ -448,10 +452,14 @@
                     gameOver: gameOver,
                     player1Id: player1Id,
                     player2Id: player2Id,
-                    gridSize: currentGridSize, // Save grid size with the game
+                    player1Name: player1Name, // Add player names to Firestore
+                    player2Name: player2Name, // Add player names to Firestore
+                    gridSize: currentGridSize,
                     lastUpdated: Date.now(),
                     gameMessage: gameMessage.textContent
-                }, { merge: true });
+                };
+
+                await setDoc(gameDocRef, updateData, { merge: true });
             } catch (error) {
                 console.error("Error updating game in Firestore:", error);
                 gameMessage.textContent = "Error saving move. Check console.";
@@ -483,16 +491,29 @@
                     gameOver = gameData.gameOver;
                     player1Id = gameData.player1Id || null;
                     player2Id = gameData.player2Id || null;
+                    player1Name = gameData.player1Name || 'Player 1'; // Retrieve names
+                    player2Name = gameData.player2Name || 'Player 2'; // Retrieve names
                     currentGridSize = gameData.gridSize || 6; // Load grid size from game data
 
                     // Assign player number if not already assigned or if player ID changed
+                    // And assign current player's name if not set
                     if (myPlayerNumber === 0 || (player1Id === currentUserId && myPlayerNumber !== 1) || (player2Id === currentUserId && myPlayerNumber !== 2)) {
                         if (player1Id === currentUserId) {
                             myPlayerNumber = 1;
                             assignedPlayerDisplay.textContent = "Player 1 (Red)";
+                            // If player's name is default, set it to input value
+                            if (player1Name === 'Player 1' && playerNameInput.value) {
+                                player1Name = playerNameInput.value;
+                                updateGameInFirestore(); // Update Firestore with the new name
+                            }
                         } else if (player2Id === currentUserId) {
                             myPlayerNumber = 2;
                             assignedPlayerDisplay.textContent = "Player 2 (Blue)";
+                            // If player's name is default, set it to input value
+                            if (player2Name === 'Player 2' && playerNameInput.value) {
+                                player2Name = playerNameInput.value;
+                                updateGameInFirestore(); // Update Firestore with the new name
+                            }
                         } else if (!player1Id && !player2Id) { // Game just created by this user
                             myPlayerNumber = 1;
                             assignedPlayerDisplay.textContent = "Player 1 (Red)";
@@ -507,13 +528,16 @@
                     updateGameInfo(); // Update scores and current player display
                     gameMessage.textContent = gameData.gameMessage || "Game updated!";
 
-                    // If game is over, disable line clicks
+                    // Change reset button text if game is over (for "Play Again")
                     if (gameOver) {
+                        resetGameBtn.textContent = "Play Another Round";
                         document.querySelectorAll('.line-segment:not(.drawn)').forEach(line => {
                             line.removeEventListener('click', handleLineClick);
                             line.style.cursor = 'default';
                             line.style.backgroundColor = 'transparent';
                         });
+                    } else {
+                        resetGameBtn.textContent = "Reset Game"; // Reset text if game is ongoing
                     }
 
                 } else {
@@ -550,6 +574,8 @@
                 const initialVerticalLines = Array(currentGridSize - 1).fill(0).map(() => Array(currentGridSize).fill(0));
                 const initialBoxes = Array(currentGridSize - 1).fill(0).map(() => Array(currentGridSize - 1).fill(0));
 
+                const myName = playerNameInput.value.trim() || `Player ${Math.random().toString(36).substring(7, 10)}`;
+
                 await setDoc(gameDocRef, {
                     board: JSON.stringify({
                         horizontalLines: initialHorizontalLines,
@@ -563,6 +589,8 @@
                     gameOver: false,
                     player1Id: currentUserId,
                     player2Id: null, // Player 2 slot is empty
+                    player1Name: myName, // Set player 1's name
+                    player2Name: 'Player 2', // Default for player 2
                     gridSize: currentGridSize,
                     lastUpdated: Date.now(),
                     gameMessage: `Game created! ID: ${newGameId}. Share this with a friend.`
@@ -571,7 +599,8 @@
                 gameMessage.textContent = `Game created! ID: ${newGameId}. Share this with a friend.`;
                 listenForGameUpdates(newGameId);
                 myPlayerNumber = 1;
-                assignedPlayerDisplay.textContent = "Player 1 (Red)";
+                player1Name = myName; // Update local state immediately
+                assignedPlayerDisplay.textContent = `${player1Name} (Red)`;
             } catch (error) {
                 console.error("Error creating game:", error);
                 gameMessage.textContent = `Failed to create game: ${error.message}. Check console for details.`;
@@ -598,6 +627,7 @@
 
                 if (docSnap.exists()) {
                     const gameData = docSnap.data();
+                    const myName = playerNameInput.value.trim() || `Player ${Math.random().toString(36).substring(7, 10)}`;
 
                     if (gameData.player1Id === currentUserId || gameData.player2Id === currentUserId) {
                         gameMessage.textContent = `You are already in game ${gameId}.`;
@@ -605,21 +635,25 @@
                     } else if (!gameData.player2Id) {
                         await setDoc(gameDocRef, {
                             player2Id: currentUserId,
-                            gameMessage: `Player 2 (${currentUserId.substring(0, 6)}...) joined the game!`
+                            player2Name: myName, // Set player 2's name
+                            gameMessage: `${myName} joined the game as Player 2!`
                         }, { merge: true });
                         gameMessage.textContent = `Joined game ${gameId} as Player 2.`;
                         listenForGameUpdates(gameId);
                         myPlayerNumber = 2;
-                        assignedPlayerDisplay.textContent = "Player 2 (Blue)";
+                        player2Name = myName; // Update local state immediately
+                        assignedPlayerDisplay.textContent = `${player2Name} (Blue)`;
                     } else if (!gameData.player1Id) { // Edge case: Player 1 left, Player 2 joins as Player 1
                         await setDoc(gameDocRef, {
                             player1Id: currentUserId,
-                            gameMessage: `Player 1 (${currentUserId.substring(0, 6)}...) joined the game!`
+                            player1Name: myName, // Set player 1's name
+                            gameMessage: `${myName} joined the game as Player 1!`
                         }, { merge: true });
                         gameMessage.textContent = `Joined game ${gameId} as Player 1.`;
                         listenForGameUpdates(gameId);
                         myPlayerNumber = 1;
-                        assignedPlayerDisplay.textContent = "Player 1 (Red)";
+                        player1Name = myName; // Update local state immediately
+                        assignedPlayerDisplay.textContent = `${player1Name} (Red)`;
                     }
                     else {
                         gameMessage.textContent = "This game is full. You can spectate.";
@@ -804,9 +838,9 @@
 
             if (!boxCaptured) {
                 currentPlayer = currentPlayer === 1 ? 2 : 1;
-                gameMessage.textContent = `Player ${currentPlayer}'s turn.`;
+                gameMessage.textContent = `It's ${getCurrentPlayerName()}'s turn.`;
             } else {
-                gameMessage.textContent = `Box captured! Player ${currentPlayer} gets another turn.`;
+                gameMessage.textContent = `Box captured! ${getCurrentPlayerName()} gets another turn.`;
             }
             
             updateGameInFirestore(); // Push changes to Firestore
@@ -880,13 +914,14 @@
                 gameOver = true;
                 let winnerMessage = "";
                 if (player1Score > player2Score) {
-                    winnerMessage = "Player 1 wins!";
+                    winnerMessage = `${player1Name} wins!`;
                 } else if (player2Score > player1Score) {
-                    winnerMessage = "Player 2 wins!";
+                    winnerMessage = `${player2Name} wins!`;
                 } else {
                     winnerMessage = "It's a tie!";
                 }
                 gameMessage.textContent = `Game Over! ${winnerMessage}`;
+                resetGameBtn.textContent = "Play Another Round"; // Change button text to indicate "play again"
                 document.querySelectorAll('.line-segment:not(.drawn)').forEach(line => {
                     line.removeEventListener('click', handleLineClick);
                     line.style.cursor = 'default';
@@ -897,11 +932,17 @@
         }
 
         // --- UI Updates ---
+        function getCurrentPlayerName() {
+            return currentPlayer === 1 ? player1Name : player2Name;
+        }
 
         function updateGameInfo() {
-            currentPlayerDisplay.textContent = `Player ${currentPlayer}`;
+            currentPlayerDisplay.textContent = getCurrentPlayerName();
             currentPlayerDisplay.classList.remove('player-1-text', 'player-2-text');
             currentPlayerDisplay.classList.add(`player-${currentPlayer}-text`);
+
+            player1NameDisplay.textContent = player1Name; // Update player 1 name display
+            player2NameDisplay.textContent = player2Name; // Update player 2 name display
 
             player1ScoreDisplay.textContent = player1Score;
             player2ScoreDisplay.textContent = player2Score;
@@ -909,16 +950,20 @@
 
         // --- Event Listeners ---
         resetGameBtn.addEventListener('click', () => {
-            if (currentGameId) {
-                // If in a game, reset local state and push to Firestore
-                initializeGame(true);
-                updateGameInFirestore();
-                gameMessage.textContent = "Game reset! Player 1's turn.";
-            } else {
-                // If not in a game, just reset local state
-                initializeGame(true);
+            // Confirmation for resetting the game
+            if (confirm("Are you sure you want to reset the game? This will clear the board for all players.")) {
+                if (currentGameId) {
+                    // If in a game, reset local state and push to Firestore
+                    initializeGame(true);
+                    updateGameInFirestore();
+                    gameMessage.textContent = "Game reset! Player 1's turn.";
+                } else {
+                    // If not in a game, just reset local state
+                    initializeGame(true);
+                }
             }
         });
+
         createGameBtn.addEventListener('click', createGame);
         joinGameBtn.addEventListener('click', joinGame);
 
@@ -947,6 +992,8 @@
         // Initial game setup on load
         document.addEventListener('DOMContentLoaded', () => {
             initializeGame(true); // Initial setup, forcing a local reset
+            // Set a default player name based on a random string if no input is provided
+            playerNameInput.value = `Player${Math.random().toString(36).substring(7, 10)}`;
         });
     </script>
 </body>
