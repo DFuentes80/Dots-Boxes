@@ -338,6 +338,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js"; // NEW: Import for Analytics
 
         const boardGrid = document.getElementById('boardGrid');
         const currentPlayerDisplay = document.getElementById('currentPlayerDisplay');
@@ -371,8 +372,6 @@
         let boxes = Array(currentGridSize - 1).fill(0).map(() => Array(currentGridSize - 1).fill(0));
 
         // Firebase variables
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        let firebaseConfig = {};
         let db;
         let auth;
         let currentUserId = null;
@@ -382,36 +381,34 @@
         let player2Id = null;
         let unsubscribeGameListener = null; // To store the unsubscribe function for onSnapshot
 
-        // --- Firebase Initialization ---
-        try {
-            firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' && __firebase_config !== '' ? __firebase_config : '{}');
-        } catch (e) {
-            console.error("Error parsing __firebase_config:", e);
-            gameMessage.textContent = "Error loading Firebase configuration. Check console.";
-        }
 
-        // Ensure projectId is present. If not, use a placeholder and warn.
-        if (!firebaseConfig.projectId || firebaseConfig.projectId === 'your-default-project-id') {
-            console.warn("Firebase projectId not found or is default. Using a placeholder. Please ensure your Canvas environment provides a valid Firebase config.");
-            // Provide default values for all required Firebase config properties
-            firebaseConfig.projectId = firebaseConfig.projectId || 'your-default-project-id';
-            firebaseConfig.apiKey = firebaseConfig.apiKey || 'your-default-api-key';
-            firebaseConfig.authDomain = firebaseConfig.authDomain || 'your-default-auth-domain';
-            firebaseConfig.databaseURL = firebaseConfig.databaseURL || 'your-default-database-url';
-            firebaseConfig.storageBucket = firebaseConfig.storageBucket || 'your-default-storage-bucket';
-            firebaseConfig.messagingSenderId = firebaseConfig.messagingSenderId || 'your-default-messaging-sender-id';
-            firebaseConfig.appId = firebaseConfig.appId || 'your-default-app-id';
-        }
+        // --- Firebase Initialization - MODIFIED SECTION ---
+        // Your web app's Firebase configuration - Using the config you provided!
+        const firebaseConfig = {
+          apiKey: "AIzaSyBzqAu34Uo-Hhmh9PgnyGLo8fffAj4l0aw",
+          authDomain: "dots-and-boxes-e9a86.firebaseapp.com",
+          projectId: "dots-and-boxes-e9a86",
+          storageBucket: "dots-and-boxes-e9a86.firebasestorage.app",
+          messagingSenderId: "140658067816",
+          appId: "1:140658067816:web:3ef80ec59dc91ad7806edd",
+          measurementId: "G-QWN1QF2BC3"
+        };
 
+        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
+        const analytics = getAnalytics(app); // NEW: Initialize Analytics
+        // --- END MODIFIED SECTION ---
+
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUserId = user.uid;
             } else {
                 try {
+                    // Note: __initial_auth_token is likely from a specific codelab environment.
+                    // For a standard web app, you might just call signInAnonymously directly.
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token !== '') {
                         await signInWithCustomToken(auth, __initial_auth_token);
                     } else {
@@ -435,7 +432,9 @@
             }
             loadingIndicator.classList.remove('hidden');
             try {
-                const gameDocRef = doc(db, `artifacts/${appId}/public/data/dots_and_boxes_games`, currentGameId);
+                // Using firebaseConfig.appId for the 'artifacts' path as per your original structure
+                // This assumes `artifacts/YOUR_APP_ID/public/data/dots_and_boxes_games` is your collection path
+                const gameDocRef = doc(db, `artifacts/${firebaseConfig.appId}/public/data/dots_and_boxes_games`, currentGameId);
                 await setDoc(gameDocRef, {
                     board: JSON.stringify({
                         horizontalLines,
@@ -466,7 +465,7 @@
                 unsubscribeGameListener(); // Unsubscribe from previous listener if any
             }
 
-            const gameDocRef = doc(db, `artifacts/${appId}/public/data/dots_and_boxes_games`, gameId);
+            const gameDocRef = doc(db, `artifacts/${firebaseConfig.appId}/public/data/dots_and_boxes_games`, gameId);
             unsubscribeGameListener = onSnapshot(gameDocRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const gameData = docSnap.data();
@@ -544,7 +543,7 @@
             gameMessage.textContent = "Creating new game...";
             try {
                 const newGameId = Math.random().toString(36).substring(2, 9).toUpperCase();
-                const gameDocRef = doc(db, `artifacts/${appId}/public/data/dots_and_boxes_games`, newGameId);
+                const gameDocRef = doc(db, `artifacts/${firebaseConfig.appId}/public/data/dots_and_boxes_games`, newGameId);
                 
                 // Initialize a fresh game state for the new game
                 const initialHorizontalLines = Array(currentGridSize).fill(0).map(() => Array(currentGridSize - 1).fill(0));
@@ -594,7 +593,7 @@
             loadingIndicator.classList.remove('hidden');
             gameMessage.textContent = `Attempting to join game ${gameId}...`;
             try {
-                const gameDocRef = doc(db, `artifacts/${appId}/public/data/dots_and_boxes_games`, gameId);
+                const gameDocRef = doc(db, `artifacts/${firebaseConfig.appId}/public/data/dots_and_boxes_games`, gameId);
                 const docSnap = await getDoc(gameDocRef);
 
                 if (docSnap.exists()) {
